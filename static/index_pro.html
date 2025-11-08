@@ -1,0 +1,656 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EqualNet Pro - Advanced Bandwidth Manager</title>
+    <link rel="stylesheet" href="style.css?v=4.0">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+            border-bottom: 2px solid #2a2f4f;
+        }
+        .tab {
+            padding: 12px 24px;
+            cursor: pointer;
+            border: none;
+            background: transparent;
+            color: #8b92b0;
+            font-weight: 600;
+            transition: all 0.3s;
+            position: relative;
+        }
+        .tab.active {
+            color: #6c5dd3;
+        }
+        .tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: linear-gradient(90deg, #6c5dd3, #ff6ec7);
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin: 20px 0;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .alerts-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .alert-item {
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 10px;
+            border-left: 4px solid;
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .alert-item.info { border-left-color: #3b82f6; }
+        .alert-item.warning { border-left-color: #f59e0b; }
+        .alert-item.error { border-left-color: #ef4444; }
+        .alert-item.success { border-left-color: #10b981; }
+        .device-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .device-card {
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s;
+        }
+        .device-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(108, 93, 211, 0.3);
+        }
+        .device-icon-large {
+            font-size: 48px;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .analytics-card {
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            margin: 15px 0;
+        }
+        .priority-badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .priority-1 { background: #10b981; color: white; }
+        .priority-2 { background: #3b82f6; color: white; }
+        .priority-3 { background: #f59e0b; color: white; }
+        .priority-4 { background: #ef4444; color: white; }
+        .priority-5 { background: #6b7280; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="header-content">
+                <div class="logo">
+                    <div class="logo-icon-wrapper">
+                        <span class="logo-icon">⚖️</span>
+                    </div>
+                    <div class="logo-text">
+                        <h1>EqualNet Pro</h1>
+                    </div>
+                </div>
+                <div class="header-subtitle">
+                    <span class="pulse-dot"></span>
+                    Advanced Smart Bandwidth Management with AI Analytics
+                </div>
+            </div>
+        </header>
+
+        <!-- Stats Grid -->
+        <div class="stats-grid">
+            <div class="stat-card card-gradient-1">
+                <div class="stat-icon-bg"></div>
+                <div class="stat-icon">📱</div>
+                <div class="stat-content">
+                    <div class="stat-label">Connected Devices</div>
+                    <div class="stat-value" id="total-clients">0</div>
+                    <div class="stat-trend">
+                        <span class="trend-up">↑ Active</span>
+                    </div>
+                </div>
+            </div>
+            <div class="stat-card card-gradient-2">
+                <div class="stat-icon-bg"></div>
+                <div class="stat-icon">⬆️</div>
+                <div class="stat-content">
+                    <div class="stat-label">Upload Speed</div>
+                    <div class="stat-value" id="upload-speed">0 KB/s</div>
+                    <div class="stat-trend">
+                        <span class="trend-neutral">Real-time</span>
+                    </div>
+                </div>
+            </div>
+            <div class="stat-card card-gradient-3">
+                <div class="stat-icon-bg"></div>
+                <div class="stat-icon">⬇️</div>
+                <div class="stat-content">
+                    <div class="stat-label">Download Speed</div>
+                    <div class="stat-value" id="download-speed">0 KB/s</div>
+                    <div class="stat-trend">
+                        <span class="trend-neutral">Real-time</span>
+                    </div>
+                </div>
+            </div>
+            <div class="stat-card card-gradient-4">
+                <div class="stat-icon-bg"></div>
+                <div class="stat-icon">🎯</div>
+                <div class="stat-content">
+                    <div class="stat-label">QoS Status</div>
+                    <div class="stat-value" id="qos-status">🟢 Active</div>
+                    <div class="stat-trend">
+                        <span class="trend-neutral" id="qos-adjustments">0 auto-adjustments</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('overview')">📊 Overview</button>
+            <button class="tab" onclick="switchTab('devices')">📱 Devices</button>
+            <button class="tab" onclick="switchTab('analytics')">📈 Analytics</button>
+            <button class="tab" onclick="switchTab('alerts')">🔔 Alerts</button>
+            <button class="tab" onclick="switchTab('config')">⚙️ Settings</button>
+        </div>
+
+        <!-- Overview Tab -->
+        <div id="overview" class="tab-content active">
+            <div class="chart-container">
+                <canvas id="bandwidthChart"></canvas>
+            </div>
+            
+            <div class="glass-card">
+                <div class="panel-header">
+                    <h2>💻 Connected Devices</h2>
+                </div>
+                <div id="clients-table"></div>
+            </div>
+        </div>
+
+        <!-- Devices Tab -->
+        <div id="devices" class="tab-content">
+            <div class="glass-card">
+                <div class="panel-header">
+                    <h2>📱 Device Management</h2>
+                </div>
+                <div class="device-grid" id="device-grid"></div>
+            </div>
+        </div>
+
+        <!-- Analytics Tab -->
+        <div id="analytics" class="tab-content">
+            <div class="analytics-card">
+                <h3>📊 7-Day Report</h3>
+                <div id="weekly-report"></div>
+            </div>
+            
+            <div class="chart-container">
+                <canvas id="hourlyChart"></canvas>
+            </div>
+            
+            <div class="analytics-card">
+                <h3>🏆 Top Bandwidth Consumers</h3>
+                <div id="top-clients"></div>
+            </div>
+        </div>
+
+        <!-- Alerts Tab -->
+        <div id="alerts" class="tab-content">
+            <div class="glass-card">
+                <div class="panel-header">
+                    <h2>🔔 Recent Alerts</h2>
+                </div>
+                <div class="alerts-list" id="alerts-list"></div>
+            </div>
+        </div>
+
+        <!-- Config Tab -->
+        <div id="config" class="tab-content">
+            <div class="config-panel glass-card">
+                <div class="panel-header">
+                    <h2>⚙️ Configuration Panel</h2>
+                </div>
+                <div class="config-content">
+                    <div class="config-item">
+                        <label>
+                            <span class="label-icon">🌐</span>
+                            Total Bandwidth (Mbps)
+                        </label>
+                        <div class="slider-wrapper">
+                            <input type="range" id="bandwidth-slider" min="10" max="500" value="100" step="10">
+                            <span id="bandwidth-value" class="slider-value">100</span>
+                        </div>
+                    </div>
+                    <div class="config-item">
+                        <label>
+                            <span class="label-icon">🎯</span>
+                            Max Priority Level
+                        </label>
+                        <div class="slider-wrapper">
+                            <input type="range" id="priority-slider" min="3" max="10" value="5" step="1">
+                            <span id="priority-value" class="slider-value">5</span>
+                        </div>
+                    </div>
+                    <div class="config-item">
+                        <label>
+                            <span class="label-icon">📊</span>
+                            Minimum Bandwidth Guarantee (%)
+                        </label>
+                        <div class="slider-wrapper">
+                            <input type="range" id="min-bw-slider" min="5" max="30" value="10" step="5">
+                            <span id="min-bw-value" class="slider-value">10</span>
+                        </div>
+                    </div>
+                    <button class="btn-primary btn-glow" onclick="updateConfig()">
+                        <span class="btn-icon">✓</span>
+                        Apply Changes
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js?v=3.0"></script>
+    <script>
+        // Tab switching
+        function switchTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Show selected tab
+            document.getElementById(tabName).classList.add('active');
+            event.target.classList.add('active');
+            
+            // Load tab-specific data
+            if (tabName === 'analytics') {
+                loadAnalytics();
+            } else if (tabName === 'alerts') {
+                loadAlerts();
+            } else if (tabName === 'devices') {
+                loadDevices();
+            }
+        }
+
+        // Charts
+        let bandwidthChart, hourlyChart;
+
+        function initCharts() {
+            const ctx1 = document.getElementById('bandwidthChart').getContext('2d');
+            bandwidthChart = new Chart(ctx1, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Upload (KB/s)',
+                        data: [],
+                        borderColor: '#6c5dd3',
+                        backgroundColor: 'rgba(108, 93, 211, 0.1)',
+                        tension: 0.4
+                    }, {
+                        label: 'Download (KB/s)',
+                        data: [],
+                        borderColor: '#ff6ec7',
+                        backgroundColor: 'rgba(255, 110, 199, 0.1)',
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: { color: '#8b92b0' }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { color: '#8b92b0' },
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' }
+                        },
+                        x: {
+                            ticks: { color: '#8b92b0' },
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' }
+                        }
+                    }
+                }
+            });
+
+            const ctx2 = document.getElementById('hourlyChart').getContext('2d');
+            hourlyChart = new Chart(ctx2, {
+                type: 'bar',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: 'Avg Traffic (KB/s)',
+                        data: [],
+                        backgroundColor: 'rgba(108, 93, 211, 0.6)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            labels: { color: '#8b92b0' }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { color: '#8b92b0' },
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' }
+                        },
+                        x: {
+                            ticks: { color: '#8b92b0' },
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Update bandwidth chart
+        function updateBandwidthChart(history) {
+            bandwidthChart.data.labels = history.time.slice(-30);
+            bandwidthChart.data.datasets[0].data = history.upload.slice(-30);
+            bandwidthChart.data.datasets[1].data = history.download.slice(-30);
+            bandwidthChart.update();
+        }
+
+        // Load analytics
+        function loadAnalytics() {
+            // Load weekly report
+            fetch('/api/analytics/report/7')
+                .then(r => r.json())
+                .then(data => {
+                    document.getElementById('weekly-report').innerHTML = `
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
+                            <div style="padding: 15px; background: rgba(108, 93, 211, 0.1); border-radius: 10px;">
+                                <div style="font-size: 12px; color: #8b92b0;">Unique Clients</div>
+                                <div style="font-size: 24px; font-weight: 700; color: #6c5dd3;">${data.unique_clients}</div>
+                            </div>
+                            <div style="padding: 15px; background: rgba(255, 110, 199, 0.1); border-radius: 10px;">
+                                <div style="font-size: 12px; color: #8b92b0;">Peak Bandwidth</div>
+                                <div style="font-size: 24px; font-weight: 700; color: #ff6ec7;">${data.peak_bandwidth} Mbps</div>
+                            </div>
+                            <div style="padding: 15px; background: rgba(16, 185, 129, 0.1); border-radius: 10px;">
+                                <div style="font-size: 12px; color: #8b92b0;">Peak Hour</div>
+                                <div style="font-size: 24px; font-weight: 700; color: #10b981;">${data.peak_hour}</div>
+                            </div>
+                            <div style="padding: 15px; background: rgba(245, 158, 11, 0.1); border-radius: 10px;">
+                                <div style="font-size: 12px; color: #8b92b0;">Avg Bandwidth</div>
+                                <div style="font-size: 24px; font-weight: 700; color: #f59e0b;">${data.avg_bandwidth} Mbps</div>
+                            </div>
+                        </div>
+                    `;
+                });
+
+            // Load hourly stats
+            fetch('/api/analytics/hourly/24')
+                .then(r => r.json())
+                .then(data => {
+                    const labels = data.map(d => d.hour.split(' ')[1]);
+                    const values = data.map(d => (d.avg_upload + d.avg_download) / 2);
+                    hourlyChart.data.labels = labels;
+                    hourlyChart.data.datasets[0].data = values;
+                    hourlyChart.update();
+                });
+
+            // Load top clients
+            fetch('/api/analytics/top/10')
+                .then(r => r.json())
+                .then(data => {
+                    let html = '<div style="margin-top: 15px;">';
+                    data.forEach((client, i) => {
+                        html += `
+                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px; margin: 8px 0; background: rgba(255, 255, 255, 0.05); border-radius: 8px;">
+                                <div>
+                                    <span style="font-weight: 600; margin-right: 10px;">#${i + 1}</span>
+                                    <span style="color: #8b92b0;">${client.ip_address}</span>
+                                </div>
+                                <div style="text-align: right;">
+                                    <div style="font-weight: 700; color: #6c5dd3;">${client.total_usage.toFixed(2)} MB</div>
+                                    <div style="font-size: 12px; color: #8b92b0;">Avg: ${client.avg_usage.toFixed(2)} MB/s</div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    html += '</div>';
+                    document.getElementById('top-clients').innerHTML = html;
+                });
+        }
+
+        // Load alerts
+        function loadAlerts() {
+            fetch('/api/alerts')
+                .then(r => r.json())
+                .then(data => {
+                    let html = '';
+                    data.forEach(alert => {
+                        html += `
+                            <div class="alert-item ${alert.severity}">
+                                <div style="font-weight: 600; margin-bottom: 5px;">
+                                    ${alert.type.toUpperCase()}
+                                </div>
+                                <div style="color: #8b92b0; margin-bottom: 5px;">
+                                    ${alert.message}
+                                </div>
+                                <div style="font-size: 12px; color: #6b7280;">
+                                    ${alert.timestamp}
+                                </div>
+                            </div>
+                        `;
+                    });
+                    document.getElementById('alerts-list').innerHTML = html || '<p style="text-align: center; color: #8b92b0; padding: 40px;">No alerts yet</p>';
+                    document.getElementById('alert-count').textContent = data.length;
+                });
+        }
+
+        // Load devices
+        function loadDevices() {
+            fetch('/api/clients')
+                .then(r => r.json())
+                .then(data => {
+                    let html = '';
+                    data.forEach(device => {
+                        const priorityClass = `priority-${device.priority}`;
+                        html += `
+                            <div class="device-card">
+                                <div class="device-icon-large">${device.icon}</div>
+                                <div style="text-align: center;">
+                                    <div style="font-weight: 700; font-size: 18px; margin-bottom: 5px;">
+                                        ${device.friendly_name}
+                                    </div>
+                                    <div style="color: #8b92b0; font-size: 14px; margin-bottom: 10px;">
+                                        ${device.vendor}
+                                    </div>
+                                    <div style="margin: 10px 0;">
+                                        <span class="priority-badge ${priorityClass}">Priority ${device.priority}</span>
+                                    </div>
+                                    <div style="margin: 10px 0; font-size: 12px; color: #8b92b0;">
+                                        <div>IP: ${device.ip}</div>
+                                        <div>MAC: ${device.mac}</div>
+                                    </div>
+                                    <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid rgba(255, 255, 255, 0.1);">
+                                        <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                                            <span style="color: #8b92b0;">Usage:</span>
+                                            <span style="font-weight: 600;">${device.usage.toFixed(2)} Mbps</span>
+                                        </div>
+                                        <div style="display: flex; justify-content: space-between;">
+                                            <span style="color: #8b92b0;">Allocated:</span>
+                                            <span style="font-weight: 600;">${device.allocated.toFixed(2)} Mbps</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    document.getElementById('device-grid').innerHTML = html;
+                });
+        }
+
+        // Update config
+        function updateConfig() {
+            const bandwidth = document.getElementById('bandwidth-slider').value;
+            const maxPriority = document.getElementById('priority-slider').value;
+            const minBandwidth = document.getElementById('min-bw-slider').value;
+
+            fetch('/api/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    total_bandwidth: parseInt(bandwidth),
+                    max_priority: parseInt(maxPriority),
+                    min_bandwidth_percent: parseInt(minBandwidth)
+                })
+            }).then(r => r.json()).then(data => {
+                if (data.success) {
+                    alert('✅ Configuration updated successfully!');
+                }
+            });
+        }
+
+        // Slider updates
+        document.getElementById('bandwidth-slider').oninput = function() {
+            document.getElementById('bandwidth-value').textContent = this.value;
+        };
+        document.getElementById('priority-slider').oninput = function() {
+            document.getElementById('priority-value').textContent = this.value;
+        };
+        document.getElementById('min-bw-slider').oninput = function() {
+            document.getElementById('min-bw-value').textContent = this.value;
+        };
+
+        // Main update function
+        function updateDashboard() {
+            fetch('/api/status')
+                .then(r => r.json())
+                .then(data => {
+                    console.log('📊 Status:', data);
+                    document.getElementById('total-clients').textContent = data.total_clients;
+                    document.getElementById('upload-speed').textContent = data.network_stats.sent.toFixed(2) + ' KB/s';
+                    document.getElementById('download-speed').textContent = data.network_stats.recv.toFixed(2) + ' KB/s';
+                })
+                .catch(e => console.error('❌ Status fetch error:', e));
+
+            fetch('/api/clients')
+                .then(r => r.json())
+                .then(data => {
+                    console.log('👥 Clients:', data);
+                    let html = '<div class="clients-list">';
+                    data.forEach(client => {
+                        const priorityClass = `priority-${client.priority}`;
+                        const appType = client.app_type || 'browsing';
+                        const appIcons = {
+                            'voip': '📞',
+                            'gaming': '🎮', 
+                            'streaming': '📺',
+                            'download': '⬇️',
+                            'browsing': '🌐',
+                            'background': '⚙️'
+                        };
+                        const appIcon = appIcons[appType] || '🌐';
+                        html += `
+                            <div class="client-item" style="display: flex; justify-content: space-between; align-items: center; padding: 15px; margin: 10px 0; background: rgba(255, 255, 255, 0.05); border-radius: 10px;">
+                                <div style="display: flex; align-items: center; gap: 15px;">
+                                    <div style="font-size: 32px;">${client.icon}</div>
+                                    <div>
+                                        <div style="font-weight: 600;">${client.friendly_name}</div>
+                                        <div style="font-size: 12px; color: #8b92b0;">
+                                            ${client.ip} • ${client.vendor} ${appIcon} ${appType}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style="text-align: right;">
+                                    <span class="priority-badge ${priorityClass}">P${client.priority}</span>
+                                    <div style="margin-top: 5px; font-size: 14px;">
+                                        <span style="color: #6c5dd3;">${client.usage.toFixed(1)} MB/s</span> /
+                                        <span style="color: #8b92b0;">${client.allocated.toFixed(1)} MB/s</span>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    html += '</div>';
+                    const clientsTable = document.getElementById('clients-table');
+                    if (clientsTable) {
+                        clientsTable.innerHTML = html;
+                    } else {
+                        console.error('❌ clients-table element not found!');
+                    }
+                })
+                .catch(e => console.error('❌ Clients fetch error:', e));
+
+            fetch('/api/history')
+                .then(r => r.json())
+                .then(data => {
+                    updateBandwidthChart(data);
+                });
+
+            // Load QoS status
+            fetch('/api/qos/status')
+                .then(r => r.json())
+                .then(data => {
+                    const qosStatus = data.enabled ? '🟢 Active' : '🔴 Disabled';
+                    const adjustments = Object.keys(data.priority_adjustments || {}).length;
+                    document.getElementById('qos-status').textContent = qosStatus;
+                    document.getElementById('qos-adjustments').textContent = 
+                        adjustments + ' auto-adjustments';
+                })
+                .catch(e => console.error('❌ QoS status error:', e));
+        }
+
+        // Initialize
+        window.onload = function() {
+            console.log('🚀 EqualNet Pro Dashboard Loading...');
+            try {
+                initCharts();
+                console.log('✅ Charts initialized');
+            } catch(e) {
+                console.error('❌ Chart initialization error:', e);
+            }
+            updateDashboard();
+            setInterval(updateDashboard, 2000);
+            console.log('✅ Dashboard ready!');
+        };
+    </script>
+</body>
+</html>
