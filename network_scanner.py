@@ -20,18 +20,15 @@ def get_local_ip_and_subnet():
         lines = result.stdout.split('\n')
         all_ips = []
         
-        # Collect all IPv4 addresses
         for i, line in enumerate(lines):
             if 'IPv4 Address' in line and '192.168.' in line:
                 match = re.search(r'(\d+\.\d+\.\d+\.\d+)', line)
                 if match:
                     ip = match.group(1)
-                    # Skip VirtualBox IPs (.56.x and .47.x)
                     if not (ip.startswith('192.168.56.') or 
                             ip.startswith('192.168.47.')):
                         all_ips.append(ip)
         
-        # Use first non-VirtualBox IP (likely WiFi)
         if all_ips:
             ip = all_ips[0]
             parts = ip.split('.')
@@ -81,7 +78,6 @@ def scan_subnet(subnet: str = None, start: int = 1, end: int = 254) -> List[str]
     results = []
     threads = []
     
-    # Scan range with threading for speed
     for i in range(start, end + 1):
         ip = f"{subnet}.{i}"
         thread = threading.Thread(target=ping_host, args=(ip, results))
@@ -89,17 +85,14 @@ def scan_subnet(subnet: str = None, start: int = 1, end: int = 254) -> List[str]
         thread.start()
         threads.append(thread)
         
-        # Limit concurrent threads
         if len(threads) >= 50:
             for t in threads:
                 t.join(timeout=2)
             threads = []
     
-    # Wait for remaining threads
     for thread in threads:
         thread.join(timeout=2)
     
-    # Sort results
     active_ips = sorted([ip for ip, active in results if active],
                        key=lambda x: [int(p) for p in x.split('.')])
     
@@ -116,10 +109,8 @@ def get_all_network_devices() -> List[str]:
     """
     import monitor
     
-    # Get devices from ARP table (fast)
     arp_devices = set(monitor.get_connected_devices())
     
-    # Get local IP to exclude it
     local_ip, subnet = get_local_ip_and_subnet()
     if local_ip:
         arp_devices.discard(local_ip)
@@ -131,13 +122,10 @@ def get_all_network_devices() -> List[str]:
         print(f"🔍 Quick scanning {subnet}.0/24 ...")
         common_ips = [1, 254]  # Router/Gateway IPs
         
-        # Scan just router IPs first
         scan_results = scan_subnet(subnet, 1, 254)
         
-        # Combine ARP + scan results
         all_devices = arp_devices.union(set(scan_results))
         
-        # Remove local IP
         if local_ip:
             all_devices.discard(local_ip)
         

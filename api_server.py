@@ -14,7 +14,6 @@ from network_scanner import get_all_network_devices
 app = Flask(__name__, static_folder='static')
 CORS(app)
 
-# Initialize new modules
 device_recognizer = DeviceRecognizer()
 analytics_db = AnalyticsDB()
 alert_manager = AlertManager()
@@ -51,7 +50,6 @@ def update_loop():
     
     while True:
         try:
-            # Use full network scan every 5 minutes, else use ARP
             current_time = time.time()
             if current_time - last_full_scan > 300:  # 5 minutes
                 clients = get_all_network_devices()
@@ -59,13 +57,11 @@ def update_loop():
             else:
                 clients = get_connected_devices()
             
-            # Device recognition and new device detection
             for ip in clients:
                 device_info = device_recognizer.get_device_info(ip)
                 STATE["device_info"][ip] = device_info
             
                 
-                # Check for new devices
                 if ip not in STATE["known_devices"]:
                     STATE["known_devices"].add(ip)
                     alert_manager.check_new_device(
@@ -73,7 +69,6 @@ def update_loop():
                         device_info["mac"],
                         device_info
                     )
-                    # Log to database
                     analytics_db.update_client_metadata(
                         ip,
                         device_info["mac"],
@@ -82,17 +77,13 @@ def update_loop():
                         device_info["friendly_name"]
                     )
             
-            # Update clients list AFTER device_info is populated
             STATE["clients"] = clients[:20]
             
-            # Initialize priorities for new clients
             if not STATE["priorities"]:
                 for i, ip in enumerate(clients):
-                    # Assign priority (1 = highest, max_priority = lowest)
                     priority = min(i + 1, STATE["max_priority"])
                     STATE["priorities"][ip] = priority
             
-            # QoS Dynamic Priority Adjustment
             if STATE["qos_enabled"] and iteration % 30 == 0:  # Every 60 seconds
                 client_data = []
                 for ip in clients:
@@ -103,7 +94,6 @@ def update_loop():
                         "download": STATE["network_stats"]["recv"] / len(clients)
                     })
                 
-                # Optimize priorities using QoS
                 optimized = qos_manager.optimize_priorities(client_data)
                 for ip, info in optimized.items():
                     old_priority = STATE["priorities"].get(ip, 4)
@@ -137,10 +127,8 @@ def update_loop():
                 "recv": round(recv, 2)
             }
             
-            # Log bandwidth to database
             analytics_db.log_bandwidth(sent, recv, len(clients))
             
-            # Log client usage and check alerts
             client_list = []
             for ip in clients:
                 usage = STATE["usage"].get(ip, 0)
@@ -148,7 +136,6 @@ def update_loop():
                 priority = STATE["priorities"].get(ip, 1)
                 device_info = STATE["device_info"].get(ip, {})
                 
-                # Log to database
                 analytics_db.log_client_usage({
                     "ip": ip,
                     "mac": device_info.get("mac", ""),
@@ -161,7 +148,6 @@ def update_loop():
                     "download": recv / len(clients) if clients else 0
                 })
                 
-                # Check bandwidth limit
                 if allocated > 0:
                     alert_manager.check_bandwidth_limit(
                         usage,
@@ -177,10 +163,7 @@ def update_loop():
                     "allocated": allocated
                 })
             
-            # Check priority starvation (only if priorities are stable)
-            # Skip check for first minute or when QoS just adjusted priorities
             if len(client_list) > 1 and iteration > 30:
-                # Only alert if priority difference is significant (>2 levels)
                 # and not caused by QoS auto-adjustment
                 high_priority_clients = [c for c in client_list if c['priority'] <= 2]
                 low_priority_clients = [c for c in client_list if c['priority'] >= 4]
@@ -303,7 +286,6 @@ def update_priority(ip):
     data = request.json
     if data:
         priority = int(data.get("priority", 1))
-        # Validate priority against max_priority
         if priority < 1:
             priority = 1
         if priority > STATE["max_priority"]:
@@ -322,7 +304,6 @@ def device_info(ip):
         data = request.json
         if data and "friendly_name" in data:
             device_recognizer.set_custom_name(ip, data["friendly_name"])
-            # Refresh device info
             STATE["device_info"][ip] = device_recognizer.get_device_info(ip)
             return jsonify({"success": True})
         return jsonify({"success": False})
@@ -367,7 +348,6 @@ def analytics_report(days):
 def get_alerts():
     """Get recent alerts"""
     alerts = alert_manager.get_recent_alerts(50)
-    # Convert datetime to string
     for alert in alerts:
         alert["timestamp"] = alert["timestamp"].strftime("%Y-%m-%d %H:%M:%S")
     return jsonify(alerts)

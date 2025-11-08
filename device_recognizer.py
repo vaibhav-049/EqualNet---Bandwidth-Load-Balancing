@@ -328,7 +328,6 @@ MAC_VENDORS = {
     "C8:6C:87": "Huawei",
 }
 
-# Device type detection patterns
 DEVICE_PATTERNS = {
     "router": ["router", "gateway", "access point", "ap"],
     "laptop": ["laptop", "notebook", "macbook", "thinkpad"],
@@ -357,7 +356,6 @@ class DeviceRecognizer:
                     timeout=3
                 )
                 
-                # Parse ipconfig output to find MAC for this IP
                 lines = result.stdout.split('\n')
                 found_ip = False
                 for i, line in enumerate(lines):
@@ -378,14 +376,12 @@ class DeviceRecognizer:
                 
                 # If not found in ipconfig, try ARP table
                 if not found_ip:
-                    # Ping to ensure ARP entry
                     subprocess.run(
                         ['ping', '-n', '1', '-w', '100', ip],
                         capture_output=True,
                         timeout=1
                     )
                     
-                    # Get from ARP
                     result = subprocess.run(
                         ['arp', '-a'],
                         capture_output=True,
@@ -393,7 +389,6 @@ class DeviceRecognizer:
                         timeout=2
                     )
                     
-                    # Parse ARP output
                     pattern = rf'{re.escape(ip)}\s+((?:[0-9A-Fa-f]{{2}}-?){{6}})'
                     match = re.search(pattern, result.stdout)
                     if match:
@@ -425,7 +420,6 @@ class DeviceRecognizer:
         if not mac:
             return "Unknown"
         
-        # Check if locally administered MAC (bit 2 of first octet set)
         # Common in privacy-enabled phones/virtual devices
         first_octet = mac.split(':')[0] if ':' in mac else mac[:2]
         try:
@@ -434,7 +428,6 @@ class DeviceRecognizer:
         except (ValueError, IndexError):
             pass
         
-        # Extract first 3 octets (OUI)
         oui = ':'.join(mac.split(':')[:3]).upper()
         return MAC_VENDORS.get(oui, "Unknown")
     
@@ -450,7 +443,6 @@ class DeviceRecognizer:
                 if pattern in combined:
                     return device_type
         
-        # Default categorization by vendor
         if vendor in ["Apple", "Samsung", "Xiaomi", "OnePlus", "Google", "Huawei"]:
             if "ipad" in hostname_lower or "tablet" in hostname_lower:
                 return "tablet"
@@ -516,7 +508,6 @@ class DeviceRecognizer:
             elif device_type != "unknown":
                 friendly_name = f"{device_type.title()} at {ip}"
             else:
-                # Get last octet of IP for unique identification
                 last_octet = ip.split('.')[-1]
                 friendly_name = f"Device-{last_octet}"
         
@@ -534,7 +525,6 @@ class DeviceRecognizer:
 if __name__ == "__main__":
     recognizer = DeviceRecognizer()
     
-    # Test with some IPs
     import sys
     if len(sys.argv) > 1:
         ip = sys.argv[1]

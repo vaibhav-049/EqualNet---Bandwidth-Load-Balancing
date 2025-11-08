@@ -35,7 +35,6 @@ class AnalyticsDB:
             )
         ''')
         
-        # Client history
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS client_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -52,7 +51,6 @@ class AnalyticsDB:
             )
         ''')
         
-        # Client metadata
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS client_metadata (
                 ip_address TEXT PRIMARY KEY,
@@ -133,7 +131,6 @@ class AnalyticsDB:
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        # Check if exists
         cursor.execute(
             'SELECT ip_address FROM client_metadata WHERE ip_address = ?',
             (ip,)
@@ -359,10 +356,8 @@ class AnalyticsDB:
 
 
 if __name__ == "__main__":
-    # Test database
     db = AnalyticsDB("test_equalnet.db")
     
-    # Log some test data
     db.log_bandwidth(100.5, 250.3, 3)
     db.log_alert("high_usage", "192.168.1.100", "Bandwidth limit exceeded", "warning")
     

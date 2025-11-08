@@ -19,7 +19,6 @@ class LoadBalancer:
         return priority
 
     def register_clients(self, clients, priorities):
-        # Validate and clamp all priorities
         self.priorities = {
             ip: self._validate_priority(pr) 
             for ip, pr in priorities.items()
@@ -37,7 +36,6 @@ class LoadBalancer:
         min_bandwidth = (self.min_bandwidth_percent / 100) * self.total_bandwidth
         num_clients = len(self.priorities)
         
-        # Calculate reserved bandwidth for minimum guarantees
         reserved_bandwidth = min_bandwidth * num_clients
         available_bandwidth = self.total_bandwidth - reserved_bandwidth
         
@@ -65,10 +63,8 @@ class LoadBalancer:
         if not self.priorities:
             return self.allocations
 
-        # Calculate initial allocation based on usage and priority
         temp_allocations = {}
         for ip in self.allocations:
-            # Skip if priority not set yet
             if ip not in self.priorities:
                 temp_allocations[ip] = self.allocations[ip]
                 continue
@@ -92,15 +88,12 @@ class LoadBalancer:
         for i in range(len(sorted_clients)):
             current_ip, current_priority = sorted_clients[i]
             
-            # Skip if not in temp_allocations
             if current_ip not in temp_allocations:
                 continue
             
-            # Check all lower priority clients
             for j in range(i + 1, len(sorted_clients)):
                 lower_ip, lower_priority = sorted_clients[j]
                 
-                # Skip if not in temp_allocations
                 if lower_ip not in temp_allocations:
                     continue
                 

@@ -91,12 +91,10 @@ class AlertManager:
             "data": data or {}
         }
         
-        # Add to history
         self.alert_history.append(alert)
         if len(self.alert_history) > 100:
             self.alert_history = self.alert_history[-100:]
         
-        # Console output with color
         emoji = {
             "info": "ℹ️",
             "warning": "⚠️",
@@ -106,7 +104,6 @@ class AlertManager:
         
         print(f"{emoji} [{severity.upper()}] {message}")
         
-        # Call custom handlers
         for handler in self.alert_handlers:
             try:
                 threading.Thread(
@@ -117,7 +114,6 @@ class AlertManager:
             except Exception as e:
                 print(f"❌ Alert handler error: {e}")
         
-        # Send email for important alerts
         if severity in ["warning", "error"] and self.email_config["enabled"]:
             subject = f"EqualNet Alert: {alert_type}"
             body = f"""
@@ -183,14 +179,12 @@ EqualNet Bandwidth Management System
         if len(clients) < 2:
             return
         
-        # Sort by priority (lower number = higher priority)
         sorted_clients = sorted(clients, key=lambda x: x.get("priority", 999))
         
         for i in range(len(sorted_clients) - 1):
             high_pri = sorted_clients[i]
             low_pri = sorted_clients[i + 1]
             
-            # Only alert if priority difference is significant (>2 levels)
             priority_diff = low_pri.get("priority", 5) - high_pri.get("priority", 1)
             if priority_diff < 2:
                 continue
@@ -198,8 +192,6 @@ EqualNet Bandwidth Management System
             high_usage = high_pri.get("usage", 0)
             low_usage = low_pri.get("usage", 0)
             
-            # Only alert if BOTH are using significant bandwidth
-            # AND low priority is using much more (2x not 1.5x)
             if high_usage > 0.5 and low_usage > high_usage * 2.0:
                 self.trigger_alert(
                     "priority_starvation",
@@ -223,7 +215,6 @@ EqualNet Bandwidth Management System
         if avg_usage == 0:
             return
         
-        # Alert if usage is 3x the average
         if current_usage > avg_usage * 3:
             self.trigger_alert(
                 "unusual_traffic",
@@ -249,11 +240,9 @@ EqualNet Bandwidth Management System
         return self.thresholds.copy()
 
 
-# Global alert manager instance
 alert_manager = AlertManager()
 
 
-# Example custom handler
 def log_to_file_handler(alert: Dict):
     """Example: Log alerts to file"""
     try:
@@ -265,7 +254,6 @@ def log_to_file_handler(alert: Dict):
 
 
 if __name__ == "__main__":
-    # Test alerts
     manager = AlertManager()
     manager.add_handler(log_to_file_handler)
     

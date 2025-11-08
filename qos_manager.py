@@ -9,7 +9,6 @@ import re
 
 class QoSManager:
     def __init__(self):
-        # Application detection patterns (port-based)
         self.app_signatures = {
             # VoIP/Video Conferencing - HIGHEST PRIORITY
             "voip": {
@@ -18,35 +17,30 @@ class QoSManager:
                 "priority": 1,
                 "min_bandwidth": 2  # MB/s
             },
-            # Gaming - HIGH PRIORITY
             "gaming": {
                 "ports": [27015, 27016, 3074, 3478, 27036],
                 "keywords": ["steam", "epic", "origin", "battlenet"],
                 "priority": 1,
                 "min_bandwidth": 1.5
             },
-            # Streaming - MEDIUM-HIGH PRIORITY
             "streaming": {
                 "ports": [443, 1935, 8080],
                 "keywords": ["youtube", "netflix", "twitch", "hotstar"],
                 "priority": 2,
                 "min_bandwidth": 3
             },
-            # File Download - MEDIUM PRIORITY
             "download": {
                 "ports": [80, 443, 8080],
                 "keywords": ["download", "torrent", "update"],
                 "priority": 3,
                 "min_bandwidth": 1
             },
-            # Browsing - NORMAL PRIORITY
             "browsing": {
                 "ports": [80, 443],
                 "keywords": ["http", "https"],
                 "priority": 4,
                 "min_bandwidth": 0.5
             },
-            # Background - LOW PRIORITY
             "background": {
                 "ports": [],
                 "keywords": ["backup", "sync", "update"],
@@ -55,12 +49,10 @@ class QoSManager:
             }
         }
         
-        # Client usage history for smart priority adjustment
         self.usage_history = {}
         self.priority_adjustments = {}
         self.last_adjustment_time = {}
         
-        # Dynamic adjustment thresholds
         self.HEAVY_USER_THRESHOLD = 50  # MB in 5 minutes
         self.LIGHT_USER_THRESHOLD = 5   # MB in 5 minutes
         self.ADJUSTMENT_INTERVAL = 300  # 5 minutes
@@ -70,30 +62,24 @@ class QoSManager:
         """
         Detect application type based on traffic patterns
         """
-        # Check bandwidth usage pattern
         upload = usage_pattern.get('upload', 0)
         download = usage_pattern.get('download', 0)
         total = upload + download
         
-        # VoIP detection: balanced upload/download
         if upload > 0 and download > 0:
             ratio = upload / download if download > 0 else 0
             if 0.3 < ratio < 3.0 and total < 5:  # Balanced, low bandwidth
                 return "voip"
         
-        # Streaming detection: high download, low upload
         if download > upload * 5 and download > 2:
             return "streaming"
         
-        # Gaming detection: frequent small packets (low total, balanced)
         if 0.5 < total < 2 and 0.5 < ratio < 2.0:
             return "gaming"
         
-        # Heavy download: asymmetric, high download
         if download > 10 and download > upload * 10:
             return "download"
         
-        # Default to browsing
         return "browsing"
     
     def calculate_dynamic_priority(self, ip: str, 
@@ -102,42 +88,34 @@ class QoSManager:
         """
         Calculate dynamic priority based on usage patterns
         """
-        # Get base priority from application type
         base_priority = self.app_signatures[app_type]["priority"]
         
-        # Initialize history if new client
         if ip not in self.usage_history:
             self.usage_history[ip] = []
             self.last_adjustment_time[ip] = time.time()
         
-        # Add current usage to history
         self.usage_history[ip].append({
             "usage": current_usage,
             "timestamp": time.time()
         })
         
-        # Keep only last 5 minutes of history
         current_time = time.time()
         self.usage_history[ip] = [
             h for h in self.usage_history[ip]
             if current_time - h["timestamp"] < 300
         ]
         
-        # Calculate total usage in last 5 minutes
         total_usage = sum(h["usage"] for h in self.usage_history[ip])
         
-        # Check if adjustment is needed
         if current_time - self.last_adjustment_time[ip] > 60:  # Check every minute
             adjusted_priority = base_priority
             
-            # Heavy user penalty (lower priority)
             if total_usage > self.HEAVY_USER_THRESHOLD:
                 # Don't penalize critical apps (VoIP, Gaming)
                 if app_type not in ["voip", "gaming"]:
                     adjusted_priority = min(5, base_priority + 1)
                     reason = "heavy usage"
             
-            # Light user bonus (higher priority)
             elif total_usage < self.LIGHT_USER_THRESHOLD:
                 adjusted_priority = max(1, base_priority - 1)
                 reason = "light usage"
@@ -145,7 +123,6 @@ class QoSManager:
                 adjusted_priority = base_priority
                 reason = "normal usage"
             
-            # Store adjustment
             if ip not in self.priority_adjustments or \
                self.priority_adjustments[ip]["priority"] != adjusted_priority:
                 self.priority_adjustments[ip] = {
@@ -158,7 +135,6 @@ class QoSManager:
             self.last_adjustment_time[ip] = current_time
             return adjusted_priority
         
-        # Return current adjusted priority or base priority
         if ip in self.priority_adjustments:
             return self.priority_adjustments[ip]["priority"]
         return base_priority
@@ -176,7 +152,6 @@ class QoSManager:
                 "packet_loss_tolerance": 0.01 if app_type == "voip" else 0.05
             }
         
-        # Default rules
         return {
             "priority": 4,
             "min_bandwidth": 0.5,
@@ -194,14 +169,12 @@ class QoSManager:
             ip = client['ip']
             usage = client.get('usage', 0)
             
-            # Detect application type
             usage_pattern = {
                 'upload': client.get('upload', 0),
                 'download': client.get('download', 0)
             }
             app_type = self.detect_application_type(ip, usage_pattern)
             
-            # Calculate dynamic priority
             priority = self.calculate_dynamic_priority(ip, usage, app_type)
             
             optimized[ip] = {
@@ -236,7 +209,6 @@ class QoSManager:
             "app_type_distribution": {}
         }
         
-        # Count application types
         for adj in self.priority_adjustments.values():
             app_type = adj['app_type']
             stats['app_type_distribution'][app_type] = \
@@ -246,10 +218,8 @@ class QoSManager:
 
 
 if __name__ == "__main__":
-    # Test QoS Manager
     qos = QoSManager()
     
-    # Simulate clients
     test_clients = [
         {"ip": "192.168.1.10", "usage": 45, "upload": 2, "download": 2},  # VoIP
         {"ip": "192.168.1.11", "usage": 80, "upload": 1, "download": 15}, # Streaming
