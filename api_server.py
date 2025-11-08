@@ -54,26 +54,15 @@ def update_loop():
             # Use full network scan every 5 minutes, else use ARP
             current_time = time.time()
             if current_time - last_full_scan > 300:  # 5 minutes
-                print("🔍 [SCAN] Running full network scan...")
                 clients = get_all_network_devices()
                 last_full_scan = current_time
             else:
                 clients = get_connected_devices()
             
             # Device recognition and new device detection
-            # IMPORTANT: Update device_info BEFORE setting STATE["clients"]
             for ip in clients:
                 device_info = device_recognizer.get_device_info(ip)
                 STATE["device_info"][ip] = device_info
-                
-                # Debug: Log vendor detection
-                if iteration == 0 or ip not in STATE.get("logged_devices", set()):
-                    print(f"🔍 [DEBUG] {ip}: MAC={device_info['mac']}, "
-                          f"Vendor={device_info['vendor']}, "
-                          f"Type={device_info['device_type']}")
-                    if "logged_devices" not in STATE:
-                        STATE["logged_devices"] = set()
-                    STATE["logged_devices"].add(ip)
             
                 
                 # Check for new devices
@@ -234,7 +223,7 @@ thread.start()
 
 @app.route('/')
 def index():
-    return send_from_directory('static', 'index_pro.html')
+    return send_from_directory('static', 'index.html')
 
 
 @app.route('/<path:filename>')
@@ -266,14 +255,6 @@ def get_clients():
         total_bw = STATE["total_bandwidth"]
         usage_pct = round((usage / total_bw) * 100, 1)
         device_info = STATE["device_info"].get(ip, {})
-        
-        # Debug: Log device_info
-        if not device_info:
-            print(f"⚠️ [API] No device_info for {ip}!")
-        elif device_info.get("vendor") == "Unknown":
-            print(f"⚠️ [API] {ip} has Unknown vendor! "
-                  f"MAC={device_info.get('mac')}, "
-                  f"device_info keys={list(device_info.keys())}")
         
         clients_data.append({
             "ip": ip,
