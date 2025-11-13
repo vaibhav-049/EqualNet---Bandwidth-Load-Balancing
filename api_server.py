@@ -479,10 +479,8 @@ def device_label(ip):
         if data and "label" in data:
             custom_label = data["label"].strip()
             
-            # Update in device recognizer (in-memory)
-            device_recognizer.set_custom_name(ip, custom_label)
+            device_recognizer.set_custom_name(ip, name)
             
-            # Update in database for persistence
             device_info = STATE["device_info"].get(ip, {})
             analytics_db.update_client_metadata(
                 ip,
@@ -663,7 +661,6 @@ def export_clients_csv():
     """Export client usage data to CSV"""
     hours = request.args.get('hours', 24, type=int)
     
-    # Get all unique clients from recent history
     since = datetime.now() - timedelta(hours=hours)
     conn = analytics_db.get_connection()
     cursor = conn.cursor()
@@ -748,19 +745,16 @@ def export_full_report():
     """Export comprehensive report with all data"""
     hours = request.args.get('hours', 24, type=int)
     
-    # Get daily report summary
     report = analytics_db.get_daily_report(hours // 24 or 1)
     
     output = io.StringIO()
     writer = csv.writer(output)
     
-    # Write header
     writer.writerow(['EqualNet Analytics Report'])
     writer.writerow([f'Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'])
     writer.writerow([f'Period: Last {hours} hours'])
     writer.writerow([])
     
-    # Summary section
     writer.writerow(['=== SUMMARY ==='])
     writer.writerow(['Metric', 'Value'])
     writer.writerow(['Unique Clients', report.get('unique_clients', 0)])
@@ -769,7 +763,6 @@ def export_full_report():
     writer.writerow(['Peak Hour', report.get('peak_hour', 'N/A')])
     writer.writerow([])
     
-    # Top clients section
     writer.writerow(['=== TOP BANDWIDTH CONSUMERS ==='])
     top_clients = analytics_db.get_top_clients(10, hours)
     if top_clients:
@@ -783,7 +776,6 @@ def export_full_report():
             ])
     writer.writerow([])
     
-    # Recent alerts section
     writer.writerow(['=== RECENT ALERTS ==='])
     alerts = alert_manager.get_recent_alerts(20)
     if alerts:
