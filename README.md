@@ -1,9 +1,23 @@
 # 🌐 EqualNet - Intelligent Bandwidth Load Balancing
 
-**EqualNet** is an advanced bandwidth management system with **dynamic QoS**, **device recognition**, **real-time monitoring**, and **intelligent traffic prioritization**. Built with Python and Flask, it provides a beautiful web dashboard for managing network bandwidth across multiple devices.
+**EqualNet** is an advanced bandwidth management system with **dynamic QoS**, **device recognition**, **real-time monitoring**, and **ACTUAL bandwidth control** on Windows. Built with Python and Flask, it provides a beautiful web dashboard for managing network bandwidth across multiple devices.
+
+## 🎯 Two Control Modes
+
+### 🔵 Hotspot Mode (ACTUAL Control) ⭐ RECOMMENDED
+- **Real bandwidth limiting** using Windows QoS policies
+- Your laptop becomes network gateway
+- Requires: Windows 10+, Admin rights, Mobile Hotspot enabled
+- [📖 Full Setup Guide](HOTSPOT_SETUP.md)
+
+### 🔹 Router Mode (Simulation)
+- Calculates bandwidth allocations but doesn't enforce them
+- Requires router API access (limited compatibility)
+- Good for monitoring and planning
 
 ## ✨ Key Features
 
+- ⚡ **ACTUAL Bandwidth Control** - Windows QoS policies for real traffic shaping (Hotspot mode)
 - 🎯 **Dynamic QoS & Priority Management** - Automatic application detection (VoIP, Gaming, Streaming, Downloads)
 - 📱 **Smart Device Recognition** - 300+ MAC vendor database with device type detection
 - 📊 **Real-time Dashboard** - Beautiful Chart.js visualizations with live updates
@@ -22,32 +36,86 @@
 Prerequisites
 - Python 3.10+ installed (detected on this machine: Python 3.13)
 
-Quick run (Windows PowerShell)
+## 🚀 Quick Start
 
-1. (Optional) Create a virtual environment:
+### Option 1: Easy Launch (Recommended)
 
-   python -m venv .venv
+**For ACTUAL bandwidth control:**
 
-2. Activate the venv in PowerShell (you may need to change execution policy):
+1. **Enable Windows Mobile Hotspot:**
+   - Settings → Network & Internet → Mobile hotspot
+   - Turn on "Share my Internet connection"
+   - Set network name and password
 
-   Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser; .\.venv\Scripts\Activate.ps1
+2. **Run EqualNet as Administrator:**
+   ```powershell
+   # Right-click start_equalnet.bat → "Run as administrator"
+   ```
+   Or:
+   ```powershell
+   Start-Process python -ArgumentList "api_server.py" -Verb RunAs
+   ```
 
-3. Install dependencies:
+3. **Connect devices to your hotspot**
 
-   python -m pip install --upgrade pip; python -m pip install -r requirements-service.txt
+4. **Open dashboard and apply limits:**
+   - http://localhost:5000
+   - Settings tab → "Apply Limits to Router"
 
-4. Start the API dashboard (runs update loop in background):
+**Success indicators:**
+- ✅ Status: "Hotspot Active (QoS Ready)"
+- 🔵 Mode: "hotspot" (ACTUAL control)
+- PowerShell test: `Get-NetQosPolicy` shows EqualNet policies
 
+### Option 2: Manual Setup
+
+1. **Install dependencies:**
+   ```powershell
+   python -m pip install -r requirements-service.txt
+   ```
+
+2. **Configure mode (api_server.py line 20):**
+   ```python
+   HOTSPOT_MODE = True  # True = ACTUAL control, False = simulation
+   ```
+
+3. **Run diagnostic:**
+   ```powershell
+   python diagnostic.py
+   ```
+
+4. **Start server:**
+   ```powershell
    python api_server.py
+   ```
 
-   Dashboard: http://localhost:5000
+5. **Open dashboard:**
+   ```
+   http://localhost:5000
+   ```
 
-5. Run the CLI monitor (optional):
+## 📖 Documentation
 
-   python equalnet_main.py
+- [**HOTSPOT_SETUP.md**](HOTSPOT_SETUP.md) - Complete Windows Hotspot setup guide
+- [**diagnostic.py**](diagnostic.py) - System configuration checker
+- [**start_equalnet.bat**](start_equalnet.bat) - One-click launcher with admin rights
 
-Notes and platform limitations
-- The controller (`controller_service.py`) uses Linux `tc` via `tc_controller.py` and network-detection utilities that may not work on Windows. On Windows `controller_service.py` will run but likely detect 0 clients.
+## 🔍 Verification
+
+**Check if QoS is working:**
+```powershell
+# View active policies
+Get-NetQosPolicy | Where-Object {$_.Name -like "EqualNet_*"}
+
+# Expected output:
+# Name                    ThrottleRate        IPDstPrefix
+# EqualNet_192.168.137.2  26214400           192.168.137.2/32
+```
+
+**Test bandwidth limits:**
+1. Run speed test on device: https://fast.com
+2. Speed should match allocated bandwidth
+3. Higher priority devices get more bandwidth
 - PowerShell may prevent script activation for venv; use `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` to allow running `Activate.ps1`.
 - The Flask server started here is for development only. For production, use a WSGI server.
 

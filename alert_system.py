@@ -17,9 +17,12 @@ class AlertManager:
             "bandwidth_limit": 90,  # Alert at 90% usage
             "new_device": True,
             "high_priority_starved": True,
-            "unusual_traffic": True
+            "unusual_traffic": True,
+            "sustained_high_usage": 85,  # Sustained usage threshold
+            "critical_usage": 95  # Critical usage threshold
         }
         self.alert_history = []
+        self.high_usage_tracker = {}  # Track sustained high usage
         self.email_config = {
             "enabled": False,
             "smtp_server": "smtp.gmail.com",
@@ -222,6 +225,70 @@ EqualNet Bandwidth Management System
                 severity="warning",
                 data={"ip": ip, "current": current_usage, "average": avg_usage}
             )
+    
+    def check_sustained_high_usage(self, ip: str, usage_percent: float,
+                                   client_name: str = None):
+        """Check for sustained high bandwidth usage"""
+        threshold = self.thresholds.get("sustained_high_usage", 85)
+        critical_threshold = self.thresholds.get("critical_usage", 95)
+        
+        if ip not in self.high_usage_tracker:
+            self.high_usage_tracker[ip] = {"count": 0, "alerted": False}
+        
+        if usage_percent >= threshold:
+            self.high_usage_tracker[ip]["count"] += 1
+            
+            if (self.high_usage_tracker[ip]["count"] >= 5 and 
+                not self.high_usage_tracker[ip]["alerted"]):
+                
+                name = client_name or ip
+                severity = "error" if usage_percent >= critical_threshold else "warning"
+                
+                self.trigger_alert(
+                    "high_usage",
+                    f"Sustained high usage from {name}: {usage_percent:.1f}% for extended period",
+                    severity=severity,
+                    data={
+                        "ip": ip,
+                        "usage_percent": usage_percent,
+                        "duration_checks": self.high_usage_tracker[ip]["count"]
+                    }
+                )
+                self.high_usage_tracker[ip]["alerted"] = True
+        else:
+            if ip in self.high_usage_tracker:
+                self.high_usage_tracker[ip]["count"] = 0
+                self.high_usage_tracker[ip]["alerted"] = False
+    
+    def check_critical_usage(self, ip: str, usage_percent: float,
+                            client_name: str = None):
+        """Check for critical bandwidth usage (immediate alert)"""
+        critical_threshold = self.thresholds.get("critical_usage", 95)
+        
+        if usage_percent >= critical_threshold:
+            name = client_name or ip
+            self.trigger_alert(
+                "critical_usage",
+                f"CRITICAL: {name} is using {usage_percent:.1f}% of allocated bandwidth!",
+                severity="error",
+                data={"ip": ip, "usage_percent": usage_percent}
+            )
+    
+    def get_high_usage_statistics(self) -> Dict:
+        """Get statistics about high usage tracking"""
+        active_high_usage = sum(
+            1 for tracker in self.high_usage_tracker.values()
+            if tracker["count"] > 0
+        )
+        
+        return {
+            "tracked_clients": len(self.high_usage_tracker),
+            "active_high_usage": active_high_usage,
+            "thresholds": {
+                "sustained": self.thresholds.get("sustained_high_usage", 85),
+                "critical": self.thresholds.get("critical_usage", 95)
+            }
+        }
     
     def get_recent_alerts(self, count: int = 20) -> List[Dict]:
         """Get recent alerts"""

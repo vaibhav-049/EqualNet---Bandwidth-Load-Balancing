@@ -43,7 +43,6 @@ class LoadBalancer:
             available_bandwidth = self.total_bandwidth
             min_bandwidth = 0
         
-        # Distribute bandwidth with minimum guarantees
         for ip, pr in self.priorities.items():
             weight = pr / total_priority
             priority_allocation = weight * available_bandwidth
@@ -78,10 +77,9 @@ class LoadBalancer:
             )
             temp_allocations[ip] = new_alloc
 
-        # Enforce priority constraints: higher priority must get >= bandwidth
         sorted_clients = sorted(
-            self.priorities.items(), 
-            key=lambda x: x[1], 
+            self.priorities.items(),
+            key=lambda x: x[1],
             reverse=True
         )
         
@@ -97,20 +95,17 @@ class LoadBalancer:
                 if lower_ip not in temp_allocations:
                     continue
                 
-                # If lower priority has more bandwidth, redistribute
                 if temp_allocations[lower_ip] > temp_allocations[current_ip]:
                     excess = temp_allocations[lower_ip] - temp_allocations[current_ip]
                     redistribute = excess * 0.5
                     temp_allocations[current_ip] += redistribute
                     temp_allocations[lower_ip] -= redistribute
 
-        # Apply minimum bandwidth guarantee
         min_bandwidth = (self.min_bandwidth_percent / 100) * self.total_bandwidth
         for ip in temp_allocations:
             if temp_allocations[ip] < min_bandwidth:
                 temp_allocations[ip] = min_bandwidth
 
-        # Normalize to total bandwidth
         total_allocated = sum(temp_allocations.values())
         if total_allocated > 0:
             scale_factor = self.total_bandwidth / total_allocated

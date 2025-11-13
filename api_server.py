@@ -1,7 +1,10 @@
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory, Response
 from flask_cors import CORS
 import threading
 import time
+import csv
+import io
+from datetime import datetime, timedelta
 from monitor import get_connected_devices
 from load_balancer import LoadBalancer
 from utils import get_bandwidth_usage
@@ -10,6 +13,10 @@ from analytics_db import AnalyticsDB
 from alert_system import AlertManager
 from qos_manager import QoSManager
 from network_scanner import get_all_network_devices
+from router_controller import RouterController
+from windows_hotspot_controller import WindowsHotspotController
+
+HOTSPOT_MODE = True
 
 app = Flask(__name__, static_folder='static')
 CORS(app)
@@ -18,6 +25,25 @@ device_recognizer = DeviceRecognizer()
 analytics_db = AnalyticsDB()
 alert_manager = AlertManager()
 qos_manager = QoSManager()
+
+if HOTSPOT_MODE:
+    bandwidth_controller = WindowsHotspotController()
+    print("🔵 Using Windows Hotspot Controller (ACTUAL bandwidth control)")
+else:
+    bandwidth_controller = RouterController()
+    print("🟡 Using Router Controller (simulation mode)")
+
+print("🔄 Loading saved device names from database...")
+try:
+    saved_devices = analytics_db.get_all_clients()
+    for device in saved_devices:
+        ip = device.get('ip_address')
+        name = device.get('friendly_name')
+        if ip and name:
+            device_recognizer.set_custom_name(ip, name)
+    print(f"✅ Loaded {len([d for d in saved_devices if d.get('friendly_name')])} custom device names")
+except Exception as e:
+    print(f"⚠️ Could not load device names: {e}")
 
 STATE = {
     "total_bandwidth": 100,
@@ -33,11 +59,11 @@ STATE = {
         "upload": [],
         "download": []
     },
-    "device_info": {},  # Device recognition data
-    "known_devices": set(),  # Track seen devices
-    "qos_enabled": True,  # QoS auto-adjustment enabled
-    "app_types": {},  # Detected application types
-    "priority_adjustments": {}  # Dynamic priority changes
+    "device_info": {},
+    "known_devices": set(),
+    "qos_enabled": True,
+    "app_types": {},
+    "priority_adjustments": {}
 }
 
 lb = None
@@ -47,20 +73,38 @@ def update_loop():
     global lb, STATE
     iteration = 0
     last_full_scan = 0
+    db_names_cache = {}
+    last_db_load = 0
     
     while True:
         try:
             current_time = time.time()
-            if current_time - last_full_scan > 300:  # 5 minutes
+            
+            if current_time - last_db_load > 30:
+                db_devices = analytics_db.get_all_clients()
+                db_names_cache = {
+                    d['ip_address']: d.get('friendly_name')
+                    for d in db_devices if d.get('friendly_name')
+                }
+                last_db_load = current_time
+            
+            if current_time - last_full_scan > 300:
                 clients = get_all_network_devices()
                 last_full_scan = current_time
             else:
                 clients = get_connected_devices()
             
+            if HOTSPOT_MODE:
+                clients = [ip for ip in clients if ip.startswith('192.168.137.')]
+            
             for ip in clients:
                 device_info = device_recognizer.get_device_info(ip)
+                
+                if ip in db_names_cache:
+                    device_info['friendly_name'] = db_names_cache[ip]
+                    device_recognizer.set_custom_name(ip, db_names_cache[ip])
+                
                 STATE["device_info"][ip] = device_info
-            
                 
                 if ip not in STATE["known_devices"]:
                     STATE["known_devices"].add(ip)
@@ -84,7 +128,7 @@ def update_loop():
                     priority = min(i + 1, STATE["max_priority"])
                     STATE["priorities"][ip] = priority
             
-            if STATE["qos_enabled"] and iteration % 30 == 0:  # Every 60 seconds
+            if STATE["qos_enabled"] and iteration % 5 == 0:
                 client_data = []
                 for ip in clients:
                     client_data.append({
@@ -149,12 +193,28 @@ def update_loop():
                 })
                 
                 if allocated > 0:
+                    usage_percent = (usage / allocated) * 100
+                    device_name = device_info.get("friendly_name", ip)
+                    
                     alert_manager.check_bandwidth_limit(
                         usage,
                         allocated,
                         ip,
-                        device_info.get("friendly_name", ip)
+                        device_name
                     )
+                    
+                    alert_manager.check_sustained_high_usage(
+                        ip,
+                        usage_percent,
+                        device_name
+                    )
+                    
+                    if usage_percent >= 95:
+                        alert_manager.check_critical_usage(
+                            ip,
+                            usage_percent,
+                            device_name
+                        )
                 
                 client_list.append({
                     "ip": ip,
@@ -164,11 +224,10 @@ def update_loop():
                 })
             
             if len(client_list) > 1 and iteration > 30:
-                # and not caused by QoS auto-adjustment
-                high_priority_clients = [c for c in client_list if c['priority'] <= 2]
-                low_priority_clients = [c for c in client_list if c['priority'] >= 4]
+                high_priority = [c for c in client_list if c['priority'] <= 2]
+                low_priority = [c for c in client_list if c['priority'] >= 4]
                 
-                if high_priority_clients and low_priority_clients:
+                if high_priority and low_priority:
                     alert_manager.check_priority_starvation(client_list)
             
             iteration += 1
@@ -410,6 +469,338 @@ def qos_explain(ip):
         "explanation": explanation,
         "current_priority": STATE["priorities"].get(ip, 4)
     })
+
+
+@app.route('/api/device/<ip>/label', methods=['GET', 'POST'])
+def device_label(ip):
+    """Get or set custom device label/name"""
+    if request.method == 'POST':
+        data = request.json
+        if data and "label" in data:
+            custom_label = data["label"].strip()
+            
+            # Update in device recognizer (in-memory)
+            device_recognizer.set_custom_name(ip, custom_label)
+            
+            # Update in database for persistence
+            device_info = STATE["device_info"].get(ip, {})
+            analytics_db.update_client_metadata(
+                ip,
+                device_info.get("mac", ""),
+                device_info.get("vendor", ""),
+                device_info.get("device_type", ""),
+                custom_label
+            )
+            
+            if ip in STATE["device_info"]:
+                STATE["device_info"][ip]["friendly_name"] = custom_label
+            else:
+                STATE["device_info"][ip] = {
+                    "friendly_name": custom_label,
+                    "ip": ip
+                }
+            
+            updated_info = device_recognizer.get_device_info(ip)
+            STATE["device_info"][ip] = updated_info
+            
+            return jsonify({
+                "success": True,
+                "ip": ip,
+                "label": custom_label,
+                "message": f"Device renamed to '{custom_label}'"
+            })
+        return jsonify({"success": False, "error": "Label not provided"})
+    else:
+        device_info = STATE["device_info"].get(ip, {})
+        return jsonify({
+            "ip": ip,
+            "label": device_info.get("friendly_name", ip)
+        })
+
+
+@app.route('/api/alerts/high-usage')
+def get_high_usage_alerts():
+    all_alerts = alert_manager.get_recent_alerts(100)
+    high_usage_alerts = [
+        alert for alert in all_alerts
+        if alert["type"] in ["bandwidth_limit", "unusual_traffic"]
+    ]
+    for alert in high_usage_alerts:
+        alert["timestamp"] = alert["timestamp"].strftime("%Y-%m-%d %H:%M:%S")
+    return jsonify(high_usage_alerts)
+
+
+@app.route('/api/router/info')
+def router_info():
+    """Get bandwidth controller information"""
+    info = bandwidth_controller.get_info()
+    info['mode'] = 'hotspot' if HOTSPOT_MODE else 'router'
+    return jsonify(info)
+
+
+@app.route('/api/router/apply_limits', methods=['POST'])
+def apply_limits_to_router():
+    """Apply calculated bandwidth limits to network controller"""
+    try:
+        results = bandwidth_controller.apply_all_limits(
+            STATE["allocations"], STATE.get("priorities", {})
+        )
+        success_count = sum(1 for v in results.values() if v)
+        
+        return jsonify({
+            "success": True,
+            "applied": success_count,
+            "total": len(STATE["allocations"]),
+            "results": results,
+            "message": f"Applied limits to {success_count}/{len(STATE['allocations'])} devices"
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        })
+
+
+@app.route('/api/router/set_limit/<ip>', methods=['POST'])
+def set_single_limit(ip):
+    """Set bandwidth limit for single device"""
+    data = request.get_json()
+    download = data.get('download', 25)
+    upload = data.get('upload', 10)
+    
+    try:
+        success = bandwidth_controller.set_bandwidth_limit(
+            ip, download, upload
+        )
+        return jsonify({
+            "success": success,
+            "ip": ip,
+            "download": download,
+            "upload": upload
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        })
+
+
+@app.route('/api/router/set_priority/<ip>', methods=['POST'])
+def apply_priority_to_router(ip):
+    """Apply priority to router QoS"""
+    data = request.get_json()
+    priority = data.get('priority', 4)
+    
+    STATE["priorities"][ip] = priority
+    
+    try:
+        success = bandwidth_controller.set_priority(ip, priority)
+        return jsonify({
+            "success": success,
+            "ip": ip,
+            "priority": priority,
+            "message": f"Priority P{priority} applied to router"
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        })
+
+
+@app.route('/api/router/clear_limits', methods=['POST'])
+def clear_router_limits():
+    """Clear all bandwidth limits from controller"""
+    try:
+        success = bandwidth_controller.clear_all_limits()
+        return jsonify({
+            "success": success,
+            "message": "All limits cleared from router"
+        })
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        })
+
+
+@app.route('/api/alerts/threshold', methods=['POST'])
+def set_usage_threshold():
+    """Set custom threshold for high usage alerts"""
+    data = request.json
+    if data and "threshold" in data:
+        threshold = float(data["threshold"])
+        if 0 < threshold <= 100:
+            alert_manager.set_threshold("bandwidth_limit", threshold)
+            return jsonify({
+                "success": True,
+                "threshold": threshold,
+                "message": f"High usage threshold set to {threshold}%"
+            })
+    return jsonify({"success": False, "error": "Invalid threshold"})
+
+
+@app.route('/api/export/csv/bandwidth')
+def export_bandwidth_csv():
+    """Export bandwidth history to CSV"""
+    hours = request.args.get('hours', 24, type=int)
+    data = analytics_db.get_bandwidth_history(hours)
+    
+    output = io.StringIO()
+    if data:
+        writer = csv.DictWriter(output, fieldnames=data[0].keys())
+        writer.writeheader()
+        writer.writerows(data)
+    
+    response = Response(output.getvalue(), mimetype='text/csv')
+    filename = f'bandwidth_history_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+    response.headers['Content-Disposition'] = f'attachment; filename={filename}'
+    return response
+
+
+@app.route('/api/export/csv/clients')
+def export_clients_csv():
+    """Export client usage data to CSV"""
+    hours = request.args.get('hours', 24, type=int)
+    
+    # Get all unique clients from recent history
+    since = datetime.now() - timedelta(hours=hours)
+    conn = analytics_db.get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT
+            ip_address,
+            mac_address,
+            vendor,
+            device_type,
+            AVG(priority) as avg_priority,
+            AVG(allocated_bandwidth) as avg_allocated,
+            AVG(used_bandwidth) as avg_used,
+            AVG(upload_speed) as avg_upload,
+            AVG(download_speed) as avg_download,
+            MAX(used_bandwidth) as peak_usage,
+            COUNT(*) as data_points
+        FROM client_history
+        WHERE timestamp >= ?
+        GROUP BY ip_address
+        ORDER BY avg_used DESC
+    ''', (since,))
+    
+    rows = cursor.fetchall()
+    conn.close()
+    
+    output = io.StringIO()
+    if rows:
+        fieldnames = ['ip_address', 'mac_address', 'vendor', 'device_type',
+                     'avg_priority', 'avg_allocated', 'avg_used', 'avg_upload',
+                     'avg_download', 'peak_usage', 'data_points']
+        writer = csv.DictWriter(output, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(dict(row))
+    
+    response = Response(output.getvalue(), mimetype='text/csv')
+    filename = f'client_usage_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+    response.headers['Content-Disposition'] = f'attachment; filename={filename}'
+    return response
+
+
+@app.route('/api/export/csv/alerts')
+def export_alerts_csv():
+    """Export alerts history to CSV"""
+    limit = request.args.get('limit', 1000, type=int)
+    
+    conn = analytics_db.get_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        SELECT
+            timestamp,
+            alert_type,
+            ip_address,
+            message,
+            severity
+        FROM alerts
+        ORDER BY timestamp DESC
+        LIMIT ?
+    ''', (limit,))
+    
+    rows = cursor.fetchall()
+    conn.close()
+    
+    output = io.StringIO()
+    if rows:
+        fieldnames = ['timestamp', 'alert_type', 'ip_address', 'message', 'severity']
+        writer = csv.DictWriter(output, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(dict(row))
+    
+    response = Response(output.getvalue(), mimetype='text/csv')
+    filename = f'alerts_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+    response.headers['Content-Disposition'] = f'attachment; filename={filename}'
+    return response
+
+
+@app.route('/api/export/csv/full-report')
+def export_full_report():
+    """Export comprehensive report with all data"""
+    hours = request.args.get('hours', 24, type=int)
+    
+    # Get daily report summary
+    report = analytics_db.get_daily_report(hours // 24 or 1)
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Write header
+    writer.writerow(['EqualNet Analytics Report'])
+    writer.writerow([f'Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'])
+    writer.writerow([f'Period: Last {hours} hours'])
+    writer.writerow([])
+    
+    # Summary section
+    writer.writerow(['=== SUMMARY ==='])
+    writer.writerow(['Metric', 'Value'])
+    writer.writerow(['Unique Clients', report.get('unique_clients', 0)])
+    writer.writerow(['Average Bandwidth (Mbps)', report.get('avg_bandwidth', 0)])
+    writer.writerow(['Peak Bandwidth (Mbps)', report.get('peak_bandwidth', 0)])
+    writer.writerow(['Peak Hour', report.get('peak_hour', 'N/A')])
+    writer.writerow([])
+    
+    # Top clients section
+    writer.writerow(['=== TOP BANDWIDTH CONSUMERS ==='])
+    top_clients = analytics_db.get_top_clients(10, hours)
+    if top_clients:
+        writer.writerow(['IP Address', 'Avg Usage', 'Total Usage', 'Sessions'])
+        for client in top_clients:
+            writer.writerow([
+                client['ip_address'],
+                f"{client['avg_usage']:.2f}",
+                f"{client['total_usage']:.2f}",
+                client['sessions']
+            ])
+    writer.writerow([])
+    
+    # Recent alerts section
+    writer.writerow(['=== RECENT ALERTS ==='])
+    alerts = alert_manager.get_recent_alerts(20)
+    if alerts:
+        writer.writerow(['Timestamp', 'Type', 'IP', 'Severity', 'Message'])
+        for alert in alerts:
+            writer.writerow([
+                alert['timestamp'].strftime("%Y-%m-%d %H:%M:%S"),
+                alert['type'],
+                alert.get('data', {}).get('ip', 'N/A'),
+                alert['severity'],
+                alert['message']
+            ])
+    
+    response = Response(output.getvalue(), mimetype='text/csv')
+    filename = f'full_report_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+    response.headers['Content-Disposition'] = f'attachment; filename={filename}'
+    return response
 
 
 if __name__ == '__main__':

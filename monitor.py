@@ -35,6 +35,7 @@ def get_connected_devices():
     result = os.popen("arp -a").read()
     
     devices = []
+    hotspot_devices = []
     current_interface = None
     
     for line in result.split('\n'):
@@ -56,10 +57,15 @@ def get_connected_devices():
             if ip.startswith('224.') or ip.startswith('239.'):
                 continue
             
-            if conn_type == 'dynamic':
-                devices.append(ip)
+            is_hotspot = ip.startswith('192.168.137.')
+            
+            if is_hotspot or conn_type == 'dynamic':
+                if is_hotspot:
+                    hotspot_devices.append(ip)
+                else:
+                    devices.append(ip)
     
-    return devices
+    return hotspot_devices + devices if hotspot_devices else devices
 
 
 if __name__ == "__main__":

@@ -8,9 +8,7 @@ import platform
 from typing import Dict, Optional
 
 
-# MAC OUI (Organizationally Unique Identifier) Database
 MAC_VENDORS = {
-    # Apple devices
     "00:03:93": "Apple",
     "00:05:02": "Apple",
     "00:0A:27": "Apple",
@@ -345,10 +343,8 @@ class DeviceRecognizer:
         self.custom_names = {}
     
     def get_mac_address(self, ip: str) -> Optional[str]:
-        """Get MAC address for an IP using ARP or ipconfig"""
         try:
             if platform.system().lower() == 'windows':
-                # First try ipconfig for local interfaces
                 result = subprocess.run(
                     ['ipconfig', '/all'],
                     capture_output=True,
@@ -359,10 +355,8 @@ class DeviceRecognizer:
                 lines = result.stdout.split('\n')
                 found_ip = False
                 for i, line in enumerate(lines):
-                    # Look for the IP address
                     if ip in line and 'IPv4' in line:
                         found_ip = True
-                        # Look backwards for Physical Address
                         for j in range(i, max(i-15, -1), -1):
                             if 'Physical Address' in lines[j]:
                                 mac_match = re.search(
@@ -374,7 +368,6 @@ class DeviceRecognizer:
                                     mac = mac.replace('-', ':').upper()
                                     return mac
                 
-                # If not found in ipconfig, try ARP table
                 if not found_ip:
                     subprocess.run(
                         ['ping', '-n', '1', '-w', '100', ip],
@@ -395,22 +388,6 @@ class DeviceRecognizer:
                         mac = match.group(1).replace('-', ':').upper()
                         if len(mac.replace(':', '')) == 12:
                             return mac
-            else:
-                # Linux/Mac
-                subprocess.run(['ping', '-c', '1', '-W', '1', ip],
-                             capture_output=True, timeout=1)
-                result = subprocess.run(
-                    ['arp', '-n', ip],
-                    capture_output=True,
-                    text=True,
-                    timeout=2
-                )
-                match = re.search(
-                    r'([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}',
-                    result.stdout
-                )
-                if match:
-                    return match.group(0).upper()
         except Exception as e:
             print(f"⚠️ Error getting MAC for {ip}: {e}")
         return None
@@ -420,7 +397,6 @@ class DeviceRecognizer:
         if not mac:
             return "Unknown"
         
-        # Common in privacy-enabled phones/virtual devices
         first_octet = mac.split(':')[0] if ':' in mac else mac[:2]
         try:
             if int(first_octet, 16) & 0x02:  # Locally administered
@@ -451,7 +427,6 @@ class DeviceRecognizer:
                        "JioFiber", "Jio", "Reliance Jio", "Reliance"]:
             return "router"
         elif vendor == "Private Device":
-            # Locally administered MAC - likely phone with privacy
             return "phone"
         elif vendor in ["Amazon", "Google Nest"]:
             return "iot"
@@ -497,7 +472,6 @@ class DeviceRecognizer:
         device_type = self.get_device_type(vendor, hostname)
         icon = self.get_device_icon(device_type)
         
-        # Generate friendly name
         if ip in self.custom_names:
             friendly_name = self.custom_names[ip]
         else:

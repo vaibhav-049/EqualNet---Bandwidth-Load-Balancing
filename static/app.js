@@ -191,7 +191,16 @@ async function updateClientsTable() {
         
         tbody.innerHTML = clients.map(client => `
             <tr>
-                <td><strong>${client.ip}</strong></td>
+                <td>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="font-size: 20px;">${client.icon || '📱'}</span>
+                        <div>
+                            <strong>${client.friendly_name || client.ip}</strong>
+                            <br>
+                            <small style="color: rgba(255,255,255,0.6); font-size: 11px;">${client.ip}</small>
+                        </div>
+                    </div>
+                </td>
                 <td>
                     <span class="badge ${getPriorityClass(client.priority)}">
                         ${client.priority}
@@ -206,8 +215,11 @@ async function updateClientsTable() {
                     ${client.usage_percent}%
                 </td>
                 <td>
-                    <button class="btn-small" onclick="editPriority('${client.ip}', ${client.priority})">
-                        Edit
+                    <button class="btn-small" onclick="editPriority('${client.ip}', ${client.priority})" style="margin: 2px;">
+                        📝 Edit
+                    </button>
+                    <button class="btn-small" onclick="editDeviceName('${client.ip}')" style="margin: 2px; background: #4caf50;">
+                        🏷️ Rename
                     </button>
                 </td>
             </tr>
@@ -365,7 +377,239 @@ function startUpdateLoop() {
     }, 2000);
 }
 
+// CSV Export Functions
+async function exportCSV(type, hours) {
+    try {
+        let url;
+        if (type === 'bandwidth') {
+            url = `${API_URL}/export/csv/bandwidth?hours=${hours}`;
+        } else if (type === 'clients') {
+            url = `${API_URL}/export/csv/clients?hours=${hours}`;
+        } else if (type === 'alerts') {
+            url = `${API_URL}/export/csv/alerts?limit=${hours}`;
+        } else if (type === 'full-report') {
+            url = `${API_URL}/export/csv/full-report?hours=${hours}`;
+        }
+        
+        // Trigger download
+        window.open(url, '_blank');
+        showNotification('📥 Downloading CSV file...', 'success');
+    } catch (error) {
+        console.error('Error exporting CSV:', error);
+        showNotification('Failed to export CSV', 'error');
+    }
+}
+
+// Device Naming Functions
+async function editDeviceName(ip) {
+    const currentName = await getDeviceLabel(ip);
+    const newName = prompt(`Enter custom name for device ${ip}:`, currentName);
+    
+    if (newName && newName.trim() !== '') {
+        try {
+            const response = await fetch(`${API_URL}/device/${ip}/label`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    label: newName.trim()
+                })
+            });
+            
+            const data = await response.json();
+            if (data.success) {
+                showNotification(`✓ Device renamed to: ${newName}`, 'success');
+                updateClientsTable(); // Refresh the display
+            } else {
+                showNotification('Failed to rename device', 'error');
+            }
+        } catch (error) {
+            console.error('Error renaming device:', error);
+            showNotification('Failed to rename device', 'error');
+        }
+    }
+}
+
+async function getDeviceLabel(ip) {
+    try {
+        const response = await fetch(`${API_URL}/device/${ip}/label`);
+        const data = await response.json();
+        return data.label || ip;
+    } catch (error) {
+        console.error('Error getting device label:', error);
+        return ip;
+    }
+}
+
+// Alert Threshold Function
+async function updateAlertThreshold() {
+    const threshold = document.getElementById('high-usage-threshold').value;
+    
+    try {
+        const response = await fetch(`${API_URL}/alerts/threshold`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                threshold: parseFloat(threshold)
+            })
+        });
+        
+        const data = await response.json();
+        if (data.success) {
+            showNotification(`✓ High usage threshold set to ${threshold}%`, 'success');
+        } else {
+            showNotification('Failed to update threshold', 'error');
+        }
+    } catch (error) {
+        console.error('Error updating threshold:', error);
+        showNotification('Failed to update threshold', 'error');
+    }
+}
+
+// Update threshold slider value display
+document.addEventListener('DOMContentLoaded', () => {
+    const thresholdSlider = document.getElementById('high-usage-threshold');
+    const thresholdValue = document.getElementById('threshold-value');
+    
+    if (thresholdSlider && thresholdValue) {
+        thresholdSlider.addEventListener('input', function() {
+            thresholdValue.textContent = this.value;
+        });
+    }
+});
+
+// Router Control Functions
+async function loadRouterInfo() {
+    try {
+        const response = await fetch(`${API_URL}/router/info`);
+        const data = await response.json();
+        
+        document.getElementById('router-ip').textContent = data.ip || 'N/A';
+        document.getElementById('router-type').textContent = data.type || 'unknown';
+        document.getElementById('router-mode').textContent = data.mode || 'unknown';
+        
+        const statusBadge = document.getElementById('router-status');
+        
+        // Update status based on control mode
+        if (data.mode === 'hotspot') {
+            if (data.status === 'ready' && data.admin) {
+                statusBadge.textContent = '✅ Hotspot Active (QoS Ready)';
+                statusBadge.style.background = 'rgba(76, 175, 80, 0.2)';
+                statusBadge.style.color = '#4caf50';
+            } else if (!data.admin) {
+                statusBadge.textContent = '⚠️ Need Admin Rights';
+                statusBadge.style.background = 'rgba(255, 152, 0, 0.2)';
+                statusBadge.style.color = '#ff9800';
+            } else {
+                statusBadge.textContent = '🔵 Hotspot Mode';
+                statusBadge.style.background = 'rgba(33, 150, 243, 0.2)';
+                statusBadge.style.color = '#2196f3';
+            }
+        } else if (data.mode === 'simulation' || data.mode === 'router') {
+            statusBadge.textContent = '🔹 Router Mode (Simulation)';
+            statusBadge.style.background = 'rgba(255, 193, 7, 0.2)';
+            statusBadge.style.color = '#ffc107';
+        } else {
+            statusBadge.textContent = '❌ Unknown Mode';
+            statusBadge.style.background = 'rgba(244, 67, 54, 0.2)';
+            statusBadge.style.color = '#f44336';
+        }
+    } catch (error) {
+        console.error('Error loading router info:', error);
+        document.getElementById('router-status').textContent = '❌ Error';
+    }
+}
+
+async function applyLimitsToRouter() {
+    const resultDiv = document.getElementById('router-result');
+    resultDiv.style.display = 'block';
+    resultDiv.innerHTML = '<p style="color: #ffc107;">⏳ Applying limits to router...</p>';
+    
+    try {
+        const response = await fetch(`${API_URL}/router/apply_limits`, {
+            method: 'POST'
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            resultDiv.innerHTML = `
+                <p style="color: #4caf50;">
+                    ✅ ${data.message}<br>
+                    Applied: ${data.applied}/${data.total} devices
+                </p>
+            `;
+            showNotification(`✓ Limits applied to ${data.applied} devices`, 'success');
+        } else {
+            resultDiv.innerHTML = `<p style="color: #f44336;">❌ Failed: ${data.error}</p>`;
+            showNotification('Failed to apply limits', 'error');
+        }
+    } catch (error) {
+        console.error('Error applying limits:', error);
+        resultDiv.innerHTML = `<p style="color: #f44336;">❌ Error: ${error.message}</p>`;
+        showNotification('Error applying limits', 'error');
+    }
+    
+    setTimeout(() => {
+        resultDiv.style.display = 'none';
+    }, 5000);
+}
+
+async function clearRouterLimits() {
+    if (!confirm('Clear all bandwidth limits from router?')) {
+        return;
+    }
+    
+    const resultDiv = document.getElementById('router-result');
+    resultDiv.style.display = 'block';
+    resultDiv.innerHTML = '<p style="color: #ffc107;">⏳ Clearing limits...</p>';
+    
+    try {
+        const response = await fetch(`${API_URL}/router/clear_limits`, {
+            method: 'POST'
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            resultDiv.innerHTML = '<p style="color: #4caf50;">✅ All limits cleared</p>';
+            showNotification('✓ All limits cleared from router', 'success');
+        } else {
+            resultDiv.innerHTML = `<p style="color: #f44336;">❌ Failed: ${data.error}</p>`;
+            showNotification('Failed to clear limits', 'error');
+        }
+    } catch (error) {
+        console.error('Error clearing limits:', error);
+        resultDiv.innerHTML = `<p style="color: #f44336;">❌ Error: ${error.message}</p>`;
+        showNotification('Error clearing limits', 'error');
+    }
+    
+    setTimeout(() => {
+        resultDiv.style.display = 'none';
+    }, 5000);
+}
+
+async function applyPriorityToRouter(ip, priority) {
+    try {
+        const response = await fetch(`${API_URL}/router/set_priority/${ip}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({priority: priority})
+        });
+        const data = await response.json();
+        
+        if (data.success) {
+            console.log(`✅ Priority P${priority} applied to router for ${ip}`);
+        }
+    } catch (error) {
+        console.error('Error applying priority to router:', error);
+    }
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     initCharts();
     startUpdateLoop();
+    loadRouterInfo();
 });
+

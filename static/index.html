@@ -214,6 +214,22 @@
             <div class="analytics-card">
                 <h3>📊 7-Day Report</h3>
                 <div id="weekly-report"></div>
+                
+                <!-- Export Buttons -->
+                <div style="margin-top: 20px; display: flex; gap: 10px; flex-wrap: wrap;">
+                    <button class="btn-primary" onclick="exportCSV('bandwidth', 24)" style="padding: 8px 16px; font-size: 14px;">
+                        📥 Export Bandwidth (24h)
+                    </button>
+                    <button class="btn-primary" onclick="exportCSV('clients', 24)" style="padding: 8px 16px; font-size: 14px;">
+                        📥 Export Clients (24h)
+                    </button>
+                    <button class="btn-primary" onclick="exportCSV('alerts', 100)" style="padding: 8px 16px; font-size: 14px;">
+                        📥 Export Alerts
+                    </button>
+                    <button class="btn-primary btn-glow" onclick="exportCSV('full-report', 24)" style="padding: 8px 16px; font-size: 14px;">
+                        📊 Full Report CSV
+                    </button>
+                </div>
             </div>
             
             <div class="chart-container">
@@ -232,6 +248,26 @@
                 <div class="panel-header">
                     <h2>🔔 Recent Alerts</h2>
                 </div>
+                
+                <!-- High Usage Alert Configuration -->
+                <div class="analytics-card" style="margin-bottom: 20px;">
+                    <h3>⚠️ High Usage Alert Settings</h3>
+                    <div class="config-item">
+                        <label>
+                            <span class="label-icon">📊</span>
+                            High Usage Threshold (%)
+                        </label>
+                        <div class="slider-wrapper">
+                            <input type="range" id="high-usage-threshold" min="50" max="100" value="90" step="5">
+                            <span id="threshold-value" class="slider-value">90</span>
+                        </div>
+                    </div>
+                    <button class="btn-primary" onclick="updateAlertThreshold()" style="padding: 8px 16px;">
+                        <span class="btn-icon">✓</span>
+                        Update Threshold
+                    </button>
+                </div>
+                
                 <div class="alerts-list" id="alerts-list"></div>
             </div>
         </div>
@@ -277,6 +313,38 @@
                         <span class="btn-icon">✓</span>
                         Apply Changes
                     </button>
+                </div>
+                
+                <!-- Bandwidth Control Section -->
+                <div class="config-panel glass-card" style="margin-top: 20px;">
+                    <div class="panel-header">
+                        <h2>⚡ Bandwidth Control</h2>
+                        <span id="router-status" class="status-badge">Checking...</span>
+                    </div>
+                    <div class="config-content">
+                        <div class="router-info" id="router-info" style="margin-bottom: 15px; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 8px;">
+                            <p><strong>Gateway IP:</strong> <span id="router-ip">-</span></p>
+                            <p><strong>Controller:</strong> <span id="router-type">-</span></p>
+                            <p><strong>Mode:</strong> <span id="router-mode">-</span></p>
+                            <p style="font-size: 12px; color: rgba(255,255,255,0.6); margin-top: 8px;">
+                                🔵 Hotspot mode = ACTUAL control with Windows QoS<br>
+                                🔹 Router mode = Simulation only (no actual control)
+                            </p>
+                        </div>
+                        
+                        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                            <button class="btn-primary" onclick="applyLimitsToRouter()" style="flex: 1;">
+                                <span class="btn-icon">🚀</span>
+                                Apply Limits to Router
+                            </button>
+                            <button class="btn-secondary" onclick="clearRouterLimits()" style="flex: 1;">
+                                <span class="btn-icon">🧹</span>
+                                Clear All Limits
+                            </button>
+                        </div>
+                        
+                        <div id="router-result" style="margin-top: 15px; padding: 10px; border-radius: 8px; display: none;"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -519,12 +587,59 @@
                                             <span style="font-weight: 600;">${device.allocated.toFixed(2)} Mbps</span>
                                         </div>
                                     </div>
+                                    <div style="display: flex; gap: 8px; margin-top: 15px;">
+                                        <button onclick="editPriority('${device.ip}', ${device.priority})" class="btn-primary" style="flex: 1; padding: 8px; font-size: 13px; background: linear-gradient(135deg, #6c5dd3, #ff6ec7);">
+                                            📝 Edit
+                                        </button>
+                                        <button onclick="editDeviceName('${device.ip}')" class="btn-primary" style="flex: 1; padding: 8px; font-size: 13px; background: #4caf50;">
+                                            🏷️ Rename
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         `;
                     });
                     document.getElementById('device-grid').innerHTML = html;
                 });
+        }
+
+        // Priority edit functions
+        let currentEditIP = null;
+
+        function editPriority(ip, currentPriority) {
+            console.log('📝 Edit priority:', ip, currentPriority);
+            currentEditIP = ip;
+            document.getElementById('modal-priority').value = currentPriority;
+            document.getElementById('priority-modal').style.display = 'block';
+        }
+
+        function closePriorityModal() {
+            document.getElementById('priority-modal').style.display = 'none';
+        }
+
+        function savePriority() {
+            const priority = document.getElementById('modal-priority').value;
+            
+            fetch(`/api/priority/${currentEditIP}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    priority: parseInt(priority)
+                })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    console.log('✅ Priority updated!');
+                    closePriorityModal();
+                    loadDevices(); // Refresh device list
+                    alert(`✅ Priority updated to P${priority}!\n\nNow go to Settings tab and click "Apply Limits to Router" to activate!`);
+                }
+            })
+            .catch(e => {
+                console.error('❌ Priority update error:', e);
+                alert('❌ Failed to update priority');
+            });
         }
 
         // Update config
@@ -638,6 +753,24 @@
                 .catch(e => console.error('❌ QoS status error:', e));
         }
 
+        // Auto-refresh for all tabs
+        function autoRefreshAll() {
+            updateDashboard();  // Overview tab
+            
+            // Check which tab is active and refresh it
+            const activeTab = document.querySelector('.tab.active');
+            if (activeTab) {
+                const tabText = activeTab.textContent.toLowerCase();
+                if (tabText.includes('devices')) {
+                    loadDevices();
+                } else if (tabText.includes('analytics')) {
+                    loadAnalytics();
+                } else if (tabText.includes('alerts')) {
+                    loadAlerts();
+                }
+            }
+        }
+
         // Initialize
         window.onload = function() {
             console.log('🚀 EqualNet Pro Dashboard Loading...');
@@ -648,9 +781,36 @@
                 console.error('❌ Chart initialization error:', e);
             }
             updateDashboard();
-            setInterval(updateDashboard, 2000);
-            console.log('✅ Dashboard ready!');
+            loadDevices();  // Load devices on startup
+            setInterval(autoRefreshAll, 2000);  // Auto-refresh every 2 seconds
+            console.log('✅ Dashboard ready with auto-refresh!');
         };
     </script>
+
+    <!-- Priority Edit Modal -->
+    <div id="priority-modal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); backdrop-filter: blur(10px);">
+        <div style="background: linear-gradient(135deg, #1a1f3a 0%, #2d1b4e 100%); margin: 10% auto; padding: 30px; border: 2px solid rgba(108, 93, 211, 0.3); border-radius: 20px; width: 90%; max-width: 400px; box-shadow: 0 20px 60px rgba(108, 93, 211, 0.4);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <h2 style="color: #6c5dd3; margin: 0; font-size: 24px;">🎯 Set Priority</h2>
+                <button onclick="closePriorityModal()" style="background: transparent; border: none; color: #ff6ec7; font-size: 28px; cursor: pointer; line-height: 1;">&times;</button>
+            </div>
+            <div style="margin-bottom: 25px;">
+                <label style="display: block; color: #8b92b0; margin-bottom: 10px; font-weight: 600;">Priority Level (1=Highest, 5=Lowest)</label>
+                <input type="number" id="modal-priority" min="1" max="5" value="3" style="width: 100%; padding: 12px; background: rgba(255,255,255,0.05); border: 2px solid rgba(108, 93, 211, 0.3); border-radius: 10px; color: white; font-size: 16px; text-align: center; font-weight: bold;">
+                <div style="margin-top: 15px; padding: 15px; background: rgba(108, 93, 211, 0.1); border-radius: 10px; border-left: 4px solid #6c5dd3;">
+                    <p style="color: #8b92b0; margin: 0; font-size: 13px; line-height: 1.6;">
+                        <strong style="color: #00d4ff;">P1:</strong> Video calls, gaming<br>
+                        <strong style="color: #6c5dd3;">P2:</strong> Streaming, browsing<br>
+                        <strong style="color: #ff9500;">P3:</strong> Downloads<br>
+                        <strong style="color: #ff6ec7;">P4-P5:</strong> Background tasks
+                    </p>
+                </div>
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button onclick="closePriorityModal()" style="flex: 1; padding: 12px; background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.2); border-radius: 10px; color: white; font-weight: 600; cursor: pointer; transition: all 0.3s;">Cancel</button>
+                <button onclick="savePriority()" style="flex: 1; padding: 12px; background: linear-gradient(135deg, #6c5dd3, #ff6ec7); border: none; border-radius: 10px; color: white; font-weight: 600; cursor: pointer; transition: all 0.3s; box-shadow: 0 4px 15px rgba(108, 93, 211, 0.4);">✓ Apply</button>
+            </div>
+        </div>
+    </div>
 </body>
 </html>

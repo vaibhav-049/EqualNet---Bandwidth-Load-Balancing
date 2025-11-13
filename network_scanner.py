@@ -117,7 +117,6 @@ def get_all_network_devices() -> List[str]:
     
     print(f"📋 ARP table has {len(arp_devices)} devices")
     
-    # Do quick scan of common IPs (router, gateway, common devices)
     if subnet:
         print(f"🔍 Quick scanning {subnet}.0/24 ...")
         common_ips = [1, 254]  # Router/Gateway IPs

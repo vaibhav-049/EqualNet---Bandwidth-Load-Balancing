@@ -24,7 +24,6 @@ class AnalyticsDB:
         conn = self.get_connection()
         cursor = conn.cursor()
         
-        # Bandwidth usage history
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS bandwidth_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,7 +63,6 @@ class AnalyticsDB:
             )
         ''')
         
-        # Alerts history
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS alerts (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -76,7 +74,6 @@ class AnalyticsDB:
             )
         ''')
         
-        # Configuration history
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS config_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -164,6 +161,26 @@ class AnalyticsDB:
             INSERT INTO alerts (alert_type, ip_address, message, severity)
             VALUES (?, ?, ?, ?)
         ''', (alert_type, ip, message, severity))
+        conn.commit()
+        conn.close()
+    
+    def update_custom_device_name(self, ip: str, custom_name: str):
+        """Update custom friendly name for a device"""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE client_metadata
+            SET friendly_name = ?, last_seen = CURRENT_TIMESTAMP
+            WHERE ip_address = ?
+        ''', (custom_name, ip))
+        
+        if cursor.rowcount == 0:
+            cursor.execute('''
+                INSERT INTO client_metadata
+                (ip_address, friendly_name)
+                VALUES (?, ?)
+            ''', (ip, custom_name))
+        
         conn.commit()
         conn.close()
     
@@ -264,7 +281,6 @@ class AnalyticsDB:
         
         since = datetime.now() - timedelta(days=days)
         
-        # Overall stats
         cursor.execute('''
             SELECT 
                 COUNT(DISTINCT ip_address) as unique_clients,
@@ -275,7 +291,6 @@ class AnalyticsDB:
         ''', (since,))
         overall = dict(cursor.fetchone())
         
-        # Peak hour
         cursor.execute('''
             SELECT 
                 strftime('%H:00', timestamp) as hour,

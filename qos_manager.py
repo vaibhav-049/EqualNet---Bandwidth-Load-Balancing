@@ -10,7 +10,6 @@ import re
 class QoSManager:
     def __init__(self):
         self.app_signatures = {
-            # VoIP/Video Conferencing - HIGHEST PRIORITY
             "voip": {
                 "ports": [3478, 3479, 5060, 5061, 8801, 16384, 19302],
                 "keywords": ["zoom", "teams", "webex", "skype", "meet"],
@@ -26,8 +25,8 @@ class QoSManager:
             "streaming": {
                 "ports": [443, 1935, 8080],
                 "keywords": ["youtube", "netflix", "twitch", "hotstar"],
-                "priority": 2,
-                "min_bandwidth": 3
+                "priority": 2,  # High priority for smooth playback
+                "min_bandwidth": 5  # Higher for HD/4K
             },
             "download": {
                 "ports": [80, 443, 8080],
@@ -56,28 +55,35 @@ class QoSManager:
         self.HEAVY_USER_THRESHOLD = 50  # MB in 5 minutes
         self.LIGHT_USER_THRESHOLD = 5   # MB in 5 minutes
         self.ADJUSTMENT_INTERVAL = 300  # 5 minutes
+        self.CHECK_INTERVAL = 10  # Check every 10 seconds for faster response
         
     def detect_application_type(self, ip: str, 
                                 usage_pattern: Dict) -> str:
         """
         Detect application type based on traffic patterns
+        Values in MB/s (Megabytes per second)
         """
         upload = usage_pattern.get('upload', 0)
         download = usage_pattern.get('download', 0)
         total = upload + download
         
-        if upload > 0 and download > 0:
-            ratio = upload / download if download > 0 else 0
-            if 0.3 < ratio < 3.0 and total < 5:  # Balanced, low bandwidth
+        ratio = upload / download if download > 0.01 else 0
+        
+        if download > 3 and download > upload * 3:
+            if download > 8:
+                return "streaming"
+            elif download > 3:
+                return "streaming"
+        
+        if upload > 0.3 and download > 0.3:
+            if 0.2 < ratio < 5.0 and total < 8:
                 return "voip"
         
-        if download > upload * 5 and download > 2:
-            return "streaming"
+        if 0.1 < total < 3 and 0.3 < ratio < 3.0:
+            if upload > 0.1 and download > 0.1:
+                return "gaming"
         
-        if 0.5 < total < 2 and 0.5 < ratio < 2.0:
-            return "gaming"
-        
-        if download > 10 and download > upload * 10:
+        if download > 15 and download > upload * 20:
             return "download"
         
         return "browsing"
@@ -107,11 +113,13 @@ class QoSManager:
         
         total_usage = sum(h["usage"] for h in self.usage_history[ip])
         
-        if current_time - self.last_adjustment_time[ip] > 60:  # Check every minute
+        if current_time - self.last_adjustment_time[ip] > self.CHECK_INTERVAL:
             adjusted_priority = base_priority
             
-            if total_usage > self.HEAVY_USER_THRESHOLD:
-                # Don't penalize critical apps (VoIP, Gaming)
+            if app_type == "streaming" and current_usage > 8:
+                adjusted_priority = 1
+                reason = "HD/4K streaming"
+            elif total_usage > self.HEAVY_USER_THRESHOLD:
                 if app_type not in ["voip", "gaming"]:
                     adjusted_priority = min(5, base_priority + 1)
                     reason = "heavy usage"
